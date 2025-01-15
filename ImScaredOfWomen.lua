@@ -93,7 +93,7 @@ MainTab:CreateInput({
    RemoveTextAfterFocusLost = false,
    Flag = "Input1",
    Callback = function(Text)
-local Players = game:GetService("Players")
+   local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
@@ -102,7 +102,7 @@ local Global = require(ReplicatedStorage:WaitForChild("Global"))
 local BackgroundAudioPlayer = nil
 local BackgroundAudioFader = nil
 
-   local MUSIC_ID = "rbxassetid://" .. Text
+local MUSIC_ID = "rbxassetid://" .. Text
 
 function StopExistingAudio()
     local existingAudio = PlayerGui:FindFirstChild("BackgroundAudioPlayer")
