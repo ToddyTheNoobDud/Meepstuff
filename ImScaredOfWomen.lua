@@ -45,7 +45,7 @@ CharacterTab:CreateSection("Character Modifications")
 local args1 = {201, 1314, {}}
 local args2 = {202}
 
-
+-- Function to create spawner
 local function createSpawner()
     while true do
         local randX = math.random(-500, 500)
@@ -84,6 +84,69 @@ MainTab:CreateButton({
     Callback = function()
         task.spawn(createSpawner)
     end,
+})
+
+MainTab:CreateInput({
+   Name = "Music background",
+   CurrentValue = "",
+   PlaceholderText = "Id here",
+   RemoveTextAfterFocusLost = false,
+   Flag = "Input1",
+   Callback = function(Text)
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+local Global = require(ReplicatedStorage:WaitForChild("Global"))
+
+local BackgroundAudioPlayer = nil
+local BackgroundAudioFader = nil
+
+   local MUSIC_ID = "rbxassetid://" .. Text
+
+function StopExistingAudio()
+    local existingAudio = PlayerGui:FindFirstChild("BackgroundAudioPlayer")
+    if existingAudio then
+        existingAudio:Stop()  
+        existingAudio:Destroy()  
+    end
+end
+
+function InitializeBackgroundMusic()
+    StopExistingAudio()  
+
+    local sound = Instance.new("Sound")
+    sound.Name = "BackgroundAudioPlayer"
+    sound.Looped = false
+    sound.SoundId = MUSIC_ID
+    
+    local audioFader = Instance.new("Sound")
+    audioFader.Name = "BackgroundAudioFader"
+    audioFader.Volume = 0 
+
+    sound.Parent = PlayerGui  
+    audioFader.Parent = sound  
+
+    BackgroundAudioPlayer = sound   
+    BackgroundAudioFader = audioFader 
+
+    task.spawn(function()
+        local volume = Players.LocalPlayer:GetAttribute("SettingBackgroundMusicVolume")
+        if not volume then
+            print("[NewVirtualWorld.InitializeBackgroundMusic]", "Waiting for SettingBackgroundMusicVolume")
+            Players.LocalPlayer:GetAttributeChangedSignal("SettingBackgroundMusicVolume"):Wait()
+            volume = Players.LocalPlayer:GetAttribute("SettingBackgroundMusicVolume")
+            print("[NewVirtualWorld.InitializeBackgroundMusic]", "SettingBackgroundMusicVolume Replicated!")
+        end
+        Global.AssertVar(volume, "number", "PlayerSavedBackgroundMusicVolume")
+        sound.Volume = volume 
+    end)
+
+    sound:Play()  
+end
+
+InitializeBackgroundMusic()
+   end,
 })
 
 local Toggle = MainTab:CreateToggle({
@@ -128,6 +191,7 @@ local Toggle = MainTab:CreateToggle({
    end,
 })
 
+-- WalkSpeed Slider
 local WalkSpeedSlider = PlayerTab:CreateSlider({
     Name = "WalkSpeed",
     Range = {16, 500},
@@ -140,6 +204,7 @@ local WalkSpeedSlider = PlayerTab:CreateSlider({
     end,
 })
 
+-- JumpPower Slider
 local JumpPowerSlider = PlayerTab:CreateSlider({
     Name = "JumpPower",
     Range = {50, 500},
@@ -152,6 +217,7 @@ local JumpPowerSlider = PlayerTab:CreateSlider({
     end,
 })
 
+-- Infinite Jump Toggle
 PlayerTab:CreateToggle({
     Name = "Infinite Jump",
     CurrentValue = false,
@@ -166,6 +232,7 @@ PlayerTab:CreateToggle({
     end,
 })
 
+-- Rainbow Character Toggle
 local Toggle = VisualTab:CreateToggle({
     Name = "Rainbow Character",
     CurrentValue = false,
@@ -192,6 +259,7 @@ local Toggle = VisualTab:CreateToggle({
     end,
 })
 
+-- Remove Textures Button
 VisualTab:CreateButton({
     Name = "Remove Textures",
     Callback = function()
@@ -203,6 +271,7 @@ VisualTab:CreateButton({
     end,
 })
 
+-- Notify Function
 local function Notify(title, content, duration)
     Rayfield:Notify({
         Title = title,
@@ -211,6 +280,7 @@ local function Notify(title, content, duration)
     })
 end
 
+-- Make Giant Function
 local function makeGiant()
     local player = game.Players.LocalPlayer
     local character = player.Character
@@ -224,6 +294,7 @@ local function makeGiant()
                 end
             end
         end
+        -- Scale the character
         for _, part in pairs(character:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.Size = getgenv().originalSizes[part] * 5
@@ -249,7 +320,7 @@ local function resetSize()
     end
 end
 
-
+-- Character Size Slider
 local SizeSlider = CharacterTab:CreateSlider({
     Name = "Character Size",
     Range = {1, 10},
@@ -280,6 +351,7 @@ local SizeSlider = CharacterTab:CreateSlider({
     end,
 })
 
+-- Giant Mode Toggle
 CharacterTab:CreateToggle({
     Name = "Giant Mode",
     CurrentValue = false,
@@ -293,6 +365,7 @@ CharacterTab:CreateToggle({
     end,
 })
 
+-- Reset Size Button
 CharacterTab:CreateButton({
     Name = "Reset Size",
     Callback = function()
@@ -301,6 +374,7 @@ CharacterTab:CreateButton({
     end,
 })
 
+-- Fly Feature
 local FlyToggle = PlayerTab:CreateToggle({
     Name = "Fly",
     CurrentValue = false,
@@ -316,7 +390,7 @@ local FlyToggle = PlayerTab:CreateToggle({
         local UserInputService = game:GetService("UserInputService")
         local RunService = game:GetService("RunService")
 
-        local flySpeed = 100  
+        local flySpeed = 100  -- Speed while flying
         local bodyVelocity
         local heartbeatConnection
         local deathConnection
@@ -404,6 +478,7 @@ local FlyToggle = PlayerTab:CreateToggle({
     end,
 })
 
+-- Reset original sizes on character added
 game.Players.LocalPlayer.CharacterAdded:Connect(function(char)
     getgenv().originalSizes = nil
     task.wait(0.5)
@@ -412,6 +487,7 @@ game.Players.LocalPlayer.CharacterAdded:Connect(function(char)
     end
 end)
 
+-- Anti-AFK
 local VirtualUser = game:GetService("VirtualUser")
 game:GetService("Players").LocalPlayer.Idled:Connect(function()
     VirtualUser:CaptureController()
