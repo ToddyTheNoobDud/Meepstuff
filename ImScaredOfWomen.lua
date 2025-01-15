@@ -45,9 +45,20 @@ CharacterTab:CreateSection("Character Modifications")
 local args1 = {201, 1314, {}}
 local args2 = {202}
 
--- Function to create spawner
+
+local spawnerRunning = false
+
+local function cleanupSpawnedParts()
+    local spawnedParts = game.Workspace:GetChildren()
+    for _, part in ipairs(spawnedParts) do
+        if part.Name == "SpawnerPart" then
+            part:Destroy()
+        end
+    end
+end
+
 local function createSpawner()
-    while true do
+    while spawnerRunning do
         local randX = math.random(-500, 500)
         local randY = math.random(0, 500)
         local randZ = math.random(-500, 500)
@@ -65,7 +76,7 @@ local function createSpawner()
         local function spawnBalloons()
             local args1 = { [1] = 201, [2] = 1312, [3] = {} }
             local args2 = { [1] = 202 }
-            while true do
+            while spawnerRunning do
                 game:GetService("ReplicatedStorage"):WaitForChild("Connection"):InvokeServer(unpack(args1))
                 game:GetService("ReplicatedStorage"):WaitForChild("Connection"):InvokeServer(unpack(args2))
                 task.wait(0.05)
@@ -79,12 +90,20 @@ local function createSpawner()
     end
 end
 
-MainTab:CreateButton({
+MainTab:CreateToggle({
     Name = "Spawn Parts with Balloons",
-    Callback = function()
-        task.spawn(createSpawner)
+    CurrentValue = false,
+    Flag = "SpawnPartsToggle",
+    Callback = function(Value)
+        spawnerRunning = Value
+        if Value then
+            task.spawn(createSpawner)
+        else
+            cleanupSpawnedParts()
+        end
     end,
 })
+
 
 MainTab:CreateInput({
    Name = "Music background",
@@ -167,6 +186,94 @@ local Toggle = MainTab:CreateToggle({
        end
    end,
 })
+local spawnerRunning = false
+local spawnCycle = true -- Controls the spawn/pause cycle
+local function cleanupSpawnedParts()
+    local spawnedParts = game.Workspace:GetChildren()
+    for _, part in ipairs(spawnedParts) do
+        if part.Name == "SpawnerPart" then
+            part:Destroy()
+        end
+    end
+end
+
+local function spawnBalloonsFromParts(spawnerPart)
+    while spawnerRunning and spawnCycle do
+        -- Assuming we use the part's position to determine where to spawn balloons
+        local position = spawnerPart.Position
+
+        -- Here invoke your server or create the balloon at the part's position
+        local connection = game:GetService("ReplicatedStorage"):FindFirstChild("Connection")
+        if connection then
+            connection:InvokeServer(202, 1310)
+            connection:InvokeServer(201, 1310, {})
+            local connectionEvent = game:GetService("ReplicatedStorage"):FindFirstChild("ConnectionEvent")
+            if connectionEvent then
+                connectionEvent:FireServer(210)
+            end
+        end
+
+        task.wait(math.random(0.5, 2)) -- Random wait between 0.5 and 2 seconds to spawn balloons
+    end
+end
+
+local function createSpawner()
+    -- Start the pause cycle
+    task.spawn(function()
+        while spawnerRunning do
+            spawnCycle = true
+            task.wait(2)  -- Run for 2 seconds
+            spawnCycle = false
+            task.wait(2)  -- Pause for 2 seconds
+        end
+    end)
+
+    while spawnerRunning do
+        if spawnCycle then
+            local randX = math.random(-500, 500)
+            local randY = math.random(0, 500)
+            local randZ = math.random(-500, 500)
+            local spawnerPart = Instance.new("Part")
+            spawnerPart.Position = Vector3.new(randX, randY, randZ)
+            spawnerPart.Anchored = true
+            spawnerPart.Transparency = 1
+            spawnerPart.Name = "SpawnerPart"
+            spawnerPart.BrickColor = BrickColor.new(math.random(1, 128))
+            spawnerPart.Size = Vector3.new(10, 10, 10)
+            spawnerPart.Material = Enum.Material.Neon
+            spawnerPart.CanCollide = false
+            spawnerPart.Parent = game.Workspace
+
+            task.spawn(function()
+                spawnBalloonsFromParts(spawnerPart)
+            end)
+        end
+        task.wait(0.1)
+    end
+end
+
+MainTab:CreateToggle({
+    Name = "Spawn Parts with Fireworks",
+    CurrentValue = false,
+    Flag = "SpawnPartsToggle",
+    Callback = function(Value)
+        spawnerRunning = Value
+        spawnCycle = Value
+        if Value then
+            task.spawn(createSpawner)
+        else
+            cleanupSpawnedParts()
+        end
+    end,
+})
+
+MainTab:CreateButton({
+    Name = "Open Backyard Servers",
+    Callback = function()
+    local serverbrowsermodule = require(game.Players.LocalPlayer.PlayerGui:WaitForChild("ServerBrowserGui"):WaitForChild("ServerBrowserGUI"))
+	serverbrowsermodule.Open()
+    end
+})
 
 local Toggle = MainTab:CreateToggle({
     Name = 'Crazy Effects',
@@ -194,7 +301,7 @@ local Toggle = MainTab:CreateToggle({
 -- WalkSpeed Slider
 local WalkSpeedSlider = PlayerTab:CreateSlider({
     Name = "WalkSpeed",
-    Range = {16, 500},
+    Range = {16, 26},
     Increment = 1,
     Suffix = "Speed",
     CurrentValue = 16,
