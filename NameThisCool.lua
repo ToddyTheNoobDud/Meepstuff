@@ -32,6 +32,7 @@ local Window = Rayfield:CreateWindow({
 local MainTab = Window:CreateTab("Main", 4483362458)
 local EggsTab = Window:CreateTab("Eggs", 4483362458)
 local UpgradesTab = Window:CreateTab("Upgrades", 4483362458)
+local PotionsTab = Window:CreateTab("Potions", 4483362458)
 
 MainTab:CreateSection("Toddys rewrite")
 
@@ -581,3 +582,68 @@ game:GetService("ReplicatedStorage"):WaitForChild("Functions"):WaitForChild("Upg
         end
     end,
 })
+
+PotionsTab:CreateSection("Auto buy stuff")
+
+local selectedPotions = {}
+local potionQuantity = 1
+local autoBuyPotions = false
+
+PotionsTab:CreateDropdown({
+    Name = "Select Potions",
+    Options = {"2x Clicks", "2x Gems", "2x Luck", "2x Rebirth", "2x XP Pet", "2x Hatch Speed"},
+    CurrentOption = {},
+    MultipleOptions = true,
+    Flag = "PotionDropdown", 
+    Callback = function(Options)
+        selectedPotions = Options
+    end,
+})
+
+PotionsTab:CreateDropdown({
+    Name = "Potion Quantity",
+    Options = {"1", "10", "100"},
+    CurrentOption = {"1"},
+    MultipleOptions = false,
+    Flag = "PotionQuantityDropdown",
+    Callback = function(Options)
+        potionQuantity = tonumber(Options[1]) or 1
+    end,
+})
+
+PotionsTab:CreateToggle({
+    Name = "Auto buy selected potions",
+    CurrentValue = false,
+    Flag = "AutoBuyPotions",
+    Callback = function(Value)
+        autoBuyPotions = Value
+        
+        if Value then
+            coroutine.wrap(function()
+                while autoBuyPotions do
+                    for _, potion in ipairs(selectedPotions) do
+                        local args = {}
+                        if potion == "2x Clicks" then
+                            args = {"x2Clicks", potionQuantity}
+                        elseif potion == "2x Gems" then
+                            args = {"x2Gems", potionQuantity}
+                        elseif potion == "2x Luck" then
+                            args = {"x2Luck", potionQuantity}
+                        elseif potion == "2x Rebirth" then
+                            args = {"x2Rebirths", potionQuantity}
+                        elseif potion == "2x XP Pet" then
+                            args = {"x2PetXP", potionQuantity}
+                        elseif potion == "2x Hatch Speed" then
+                            args = {"x2HatchSpeed", potionQuantity}
+                        end
+
+                        game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("Potion"):FireServer(unpack(args))
+                    end
+                    task.wait(0.5)
+                end
+            end)()
+        end
+    end,
+})
+
+getgenv().AutoBuyPotions = autoBuyPotions
