@@ -31,6 +31,8 @@ local Window = Rayfield:CreateWindow({
 
 local MainTab = Window:CreateTab("Main", 4483362458)
 local EggsTab = Window:CreateTab("Eggs", 4483362458)
+local UpgradesTab = Window:CreateTab("Upgrades", 4483362458)
+
 MainTab:CreateSection("Toddys rewrite")
 
 local localPlayer = game:GetService("Players").LocalPlayer
@@ -52,6 +54,30 @@ MainTab:CreateToggle({
         end
     end,
 })
+
+MainTab:CreateToggle({
+    Name = "Auto craft ALL (10s)",
+    CurrentValue = false,
+    Flag = "Craft",
+    Callback = function(Value)
+        getgenv().craft = Value
+        if Value then
+            coroutine.wrap(function()
+                while getgenv().craft do
+                   local args = {
+    [1] = "CraftAll",
+    [2] = {}
+}
+
+game:GetService("ReplicatedStorage"):WaitForChild("Functions"):WaitForChild("Request"):InvokeServer(unpack(args))
+
+                    task.wait(10)
+                end
+            end)()
+        end
+    end,
+})
+
 
 MainTab:CreateButton({
     Name = 'Get All gamepasses',
@@ -104,76 +130,72 @@ local function getRandomBrightColor()
     return Color3.fromHSV(hue, 0.8, 1)
 end
 
-local function lerpColor(color1, color2, alpha)
-    return Color3.new(
-        color1.R + (color2.R - color1.R) * alpha,
-        color1.G + (color2.G - color1.G) * alpha,
-        color1.B + (color2.B - color1.B) * alpha
-    )
-end
-
 local function findMainPart(pet)
     return pet:FindFirstChild("main") or pet:FindFirstChild("Main")
 end
 
+local function findMeshes(pet)
+    local meshes = {}
+    for _, child in ipairs(pet:GetDescendants()) do
+        if child:IsA("MeshPart") or child:IsA("SpecialMesh") then
+            table.insert(meshes, child)
+        end
+    end
+    return meshes
+end
+
 local function startPetColorChange(pet)
     local mainPart = findMainPart(pet)
-    if mainPart then
+    local meshes = findMeshes(pet)
+    if mainPart or #meshes > 0 then
         if not RainbowState.originalColors[pet] then
-            RainbowState.originalColors[pet] = mainPart.Color
+            RainbowState.originalColors[pet] = {}
+            if mainPart then
+                RainbowState.originalColors[pet].mainPart = mainPart.Color
+            end
+            for _, mesh in ipairs(meshes) do
+                RainbowState.originalColors[pet][mesh] = mesh.Color
+            end
         end
         
-        local thread = task.spawn(function()
-            local currentColor = mainPart.Color
-            local targetColor = getRandomBrightColor()
-            
-            while RainbowState.enabled do
-                for i = 0, 1, 0.002 do
-                    if not RainbowState.enabled then break end
-                    if not mainPart or not mainPart.Parent then return end
-                    
-                    mainPart.Color = lerpColor(currentColor, targetColor, i)
-                    task.wait(0.02)
-                end
-                
-                if RainbowState.enabled then
-                    currentColor = targetColor
-                    local nextColor = getRandomBrightColor()
-                    targetColor = lerpColor(currentColor, nextColor, 0.7)
-                    task.wait(0.030)
-                end
-            end
-        end)
-        
-        RainbowState.activeThreads[pet] = thread
-    end
-end
-
-local function handlePetUpdate(pet)
-    local mainPart = findMainPart(pet)
-    if mainPart then
         if RainbowState.enabled then
-            startPetColorChange(pet)
-        end
-    else
-        local connection
-        connection = pet.ChildAdded:Connect(function(child)
-            if child.Name:lower() == "main" then
-                connection:Disconnect()
-                if RainbowState.enabled then
-                    startPetColorChange(pet)
+            local thread = task.spawn(function()
+                local currentHue = 0
+                local colorChangeSpeed = 0.1
+                local targetColor
+                
+                while RainbowState.enabled do
+                    currentHue = (currentHue + colorChangeSpeed * task.wait()) % 1
+                    targetColor = Color3.fromHSV(currentHue, 0.8, 1)
+
+                    if mainPart and mainPart.Parent then
+                        mainPart.Color = targetColor
+                    end
+                    
+                    for _, mesh in ipairs(meshes) do
+                        if mesh.Parent then
+                            mesh.Color = targetColor
+                        end
+                    end
+                    
+                    task.wait(0.03)
                 end
-            end
-        end)
-        RainbowState.connections[pet] = connection
+            end)
+            
+            RainbowState.activeThreads[pet] = thread
+        end
     end
 end
 
-local function restoreOriginalColors()
-    for pet, originalColor in pairs(RainbowState.originalColors) do
-        local mainPart = findMainPart(pet)
-        if mainPart then
-            mainPart.Color = originalColor
+local function restoreOriginalPetColors(pet)
+    local mainPart = findMainPart(pet)
+    if mainPart and RainbowState.originalColors[pet] and RainbowState.originalColors[pet].mainPart then
+        mainPart.Color = RainbowState.originalColors[pet].mainPart
+    end
+    
+    for _, mesh in ipairs(findMeshes(pet)) do
+        if RainbowState.originalColors[pet] and RainbowState.originalColors[pet][mesh] then
+            mesh.Color = RainbowState.originalColors[pet][mesh]
         end
     end
 end
@@ -185,12 +207,58 @@ local function cleanupPet(pet)
     end
     
     if RainbowState.activeThreads[pet] then
-        task.cancel(RainbowState.activeThreads[pet])
+        if not RainbowState.activeThreads[pet]:isTerminated() then
+            task.cancel(RainbowState.activeThreads[pet])
+        end
         RainbowState.activeThreads[pet] = nil
     end
     
     RainbowState.originalColors[pet] = nil
 end
+
+local function handlePetUpdate(pet)
+    if RainbowState.originalColors[pet] then
+        restoreOriginalPetColors(pet)
+    end
+    
+    if RainbowState.enabled then
+        startPetColorChange(pet)
+    else
+        if RainbowState.originalColors[pet] then
+            restoreOriginalPetColors(pet)
+        end
+        
+        local mainPart = findMainPart(pet)
+        local meshes = findMeshes(pet)
+        if not mainPart and #meshes == 0 then
+            local connection
+            connection = pet.ChildAdded:Connect(function(child)
+                if child.Name:lower() == "main" or child:IsA("MeshPart") or child:IsA("SpecialMesh") then
+                    connection:Disconnect()
+                    if RainbowState.enabled then
+                        startPetColorChange(pet)
+                    end
+                end
+            end)
+            RainbowState.connections[pet] = connection
+        end
+    end
+end
+
+local function onPetAdded(pet)
+    handlePetUpdate(pet)
+end
+
+local function onPetRemoved(pet)
+    cleanupPet(pet)
+end
+
+for _, pet in ipairs(PlayerPets:GetChildren()) do
+    onPetAdded(pet)
+end
+
+PlayerPets.ChildAdded:Connect(onPetAdded)
+PlayerPets.ChildRemoved:Connect(onPetRemoved)
 
 local RainbowToggle = MainTab:CreateToggle({
     Name = "Rainbow Pets",
@@ -204,11 +272,9 @@ local RainbowToggle = MainTab:CreateToggle({
                 handlePetUpdate(pet)
             end
         else
-            for pet, thread in pairs(RainbowState.activeThreads) do
-                task.cancel(thread)
+            for _, pet in ipairs(PlayerPets:GetChildren()) do
+                restoreOriginalPetColors(pet)
             end
-            restoreOriginalColors()
-            RainbowState.activeThreads = {}
         end
     end,
 })
@@ -224,7 +290,6 @@ PlayerPets.ChildRemoved:Connect(function(pet)
 end)
 
 EggsTab:CreateSection("Main")
-
 local eggs = workspace.Scripts.Eggs:GetChildren()
 local eggOptions = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -233,6 +298,8 @@ local UnboxFunction = ReplicatedStorage:WaitForChild("Functions"):WaitForChild("
 for _, egg in ipairs(eggs) do
     table.insert(eggOptions, egg.Name)
 end
+
+table.sort(eggOptions)
 
 local State = {
     isAutoHatching = false,
@@ -248,7 +315,6 @@ local NotificationQueue = {
     minInterval = 0.5  
 }
 
--- Function to convert table or any result to string
 local function formatResult(result)
     if typeof(result) == "table" then
         local formatted = {}
@@ -345,6 +411,173 @@ local Toggle = EggsTab:CreateToggle({
         State.isAutoHatching = Value
         if Value then
             StartAutoHatching()
+        end
+    end,
+})
+
+local HighlightToggle = EggsTab:CreateToggle({
+    Name = "Highlight Selected Egg",
+    CurrentValue = false,
+    Flag = "HighlightToggle",
+    Callback = function(Value)
+        if State.currentEgg then
+            local eggToHighlight = workspace.Scripts.Eggs:FindFirstChild(State.currentEgg)
+            
+            if eggToHighlight then
+                local highlight = eggToHighlight:FindFirstChild("Highlight")
+
+                if Value then
+                    if not highlight then
+                        highlight = Instance.new("Highlight")
+                        highlight.Name = "Highlight"
+                        highlight.Adornee = eggToHighlight
+                        highlight.FillColor = Color3.new(1, 1, 0) 
+                        highlight.FillTransparency = 0.5 
+                        highlight.OutlineColor = Color3.new(1, 0, 0)
+                        highlight.OutlineTransparency = 0
+                        highlight.Parent = eggToHighlight
+                    end
+                else
+                    if highlight then
+                        highlight:Destroy()
+                    end
+                end
+            end
+        end
+    end,
+})
+
+
+UpgradesTab:CreateSection("Main")
+
+UpgradesTab:CreateToggle({
+    Name = "Auto Upgrade Rebirth",
+    CurrentValue = false,
+    Flag = "Rebirth",
+    Callback = function(Value)
+        getgenv().Rebirth = Value
+        if Value then
+            coroutine.wrap(function()
+                while getgenv().Rebirth do
+                    local args = {
+    [1] = "RebirthButtons"
+}
+
+game:GetService("ReplicatedStorage"):WaitForChild("Functions"):WaitForChild("Upgrade"):InvokeServer(unpack(args))
+
+                    task.wait(0.5)
+                end
+            end)()
+        end
+    end,
+})
+
+UpgradesTab:CreateToggle({
+    Name = "Auto Upgrade Click Multi",
+    CurrentValue = false,
+    Flag = "Rebirth",
+    Callback = function(Value)
+        getgenv().click = Value
+        if Value then
+            coroutine.wrap(function()
+                while getgenv().click do
+                    local args = {
+    [1] = "ClickMultiplier"
+}
+
+game:GetService("ReplicatedStorage"):WaitForChild("Functions"):WaitForChild("Upgrade"):InvokeServer(unpack(args))
+
+                    task.wait(0.5)
+                end
+            end)()
+        end
+    end,
+})
+
+UpgradesTab:CreateToggle({
+    Name = "Auto Upgrade Speed",
+    CurrentValue = false,
+    Flag = "Rebirth",
+    Callback = function(Value)
+        getgenv().Speed = Value
+        if Value then
+            coroutine.wrap(function()
+                while getgenv().Speed do
+local args = {
+    [1] = "WalkSpeed"
+}
+
+game:GetService("ReplicatedStorage"):WaitForChild("Functions"):WaitForChild("Upgrade"):InvokeServer(unpack(args))
+
+                    task.wait(0.5)
+                end
+            end)()
+        end
+    end,
+})
+
+UpgradesTab:CreateToggle({
+    Name = "Auto Upgrade Gems",
+    CurrentValue = false,
+    Flag = "Rebirth",
+    Callback = function(Value)
+        getgenv().Gems = Value
+        if Value then
+            coroutine.wrap(function()
+                while getgenv().Gems do
+local args = {
+    [1] = "GemsMultiplier"
+}
+
+game:GetService("ReplicatedStorage"):WaitForChild("Functions"):WaitForChild("Upgrade"):InvokeServer(unpack(args))
+
+                    task.wait(0.5)
+                end
+            end)()
+        end
+    end,
+})
+
+UpgradesTab:CreateToggle({
+    Name = "Auto Upgrade Storage",
+    CurrentValue = false,
+    Flag = "Rebirth",
+    Callback = function(Value)
+        getgenv().Storage = Value
+        if Value then
+            coroutine.wrap(function()
+                while getgenv().Storage do
+local args = {
+    [1] = "PetStorage"
+}
+
+game:GetService("ReplicatedStorage"):WaitForChild("Functions"):WaitForChild("Upgrade"):InvokeServer(unpack(args))
+
+                    task.wait(0.5)
+                end
+            end)()
+        end
+    end,
+})
+
+UpgradesTab:CreateToggle({
+    Name = "Auto Upgrade Luck",
+    CurrentValue = false,
+    Flag = "Rebirth",
+    Callback = function(Value)
+        getgenv().Luck = Value
+        if Value then
+            coroutine.wrap(function()
+                while getgenv().Luck do
+local args = {
+    [1] = "LuckMultiplier"
+}
+
+game:GetService("ReplicatedStorage"):WaitForChild("Functions"):WaitForChild("Upgrade"):InvokeServer(unpack(args))
+
+                    task.wait(0.5)
+                end
+            end)()
         end
     end,
 })
