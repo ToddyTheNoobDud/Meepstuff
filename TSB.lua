@@ -48,7 +48,7 @@ local State = {
 
 local function debugLog(message)
     if CONFIG.DEBUG_MODE then
-        print("[DEBUG] " .. message)
+        print("[[mushroom0162]] " .. message)
     end
 end
 
