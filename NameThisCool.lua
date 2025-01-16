@@ -224,22 +224,21 @@ PlayerPets.ChildRemoved:Connect(function(pet)
 end)
 
 EggsTab:CreateSection("Main")
+
 local eggs = workspace.Scripts.Eggs:GetChildren()
 local eggOptions = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UnboxFunction = ReplicatedStorage:WaitForChild("Functions"):WaitForChild("Unbox")
 
-
 for _, egg in ipairs(eggs) do
     table.insert(eggOptions, egg.Name)
 end
-
 
 local State = {
     isAutoHatching = false,
     currentEgg = nil,
     hatchType = "Single",
-    cooldown = 0.4
+    cooldown = 0.6
 }
 
 local NotificationQueue = {
@@ -248,6 +247,18 @@ local NotificationQueue = {
     lastNotificationTime = 0,
     minInterval = 0.5  
 }
+
+-- Function to convert table or any result to string
+local function formatResult(result)
+    if typeof(result) == "table" then
+        local formatted = {}
+        for i, item in ipairs(result) do
+            table.insert(formatted, tostring(item))
+        end
+        return table.concat(formatted, ", ")
+    end
+    return tostring(result)
+end
 
 function NotificationQueue:Add(title, content)
     local currentTime = tick()
@@ -282,10 +293,11 @@ local function HatchEgg()
         return UnboxFunction:InvokeServer(unpack(args))
     end)
     
-    if success and result then
+    if success then
+        local formattedResult = formatResult(result)
         NotificationQueue:Add(
             "Egg Hatched: " .. State.currentEgg,
-            "You got " .. tostring(result)
+            "You got: " .. formattedResult
         )
     end
 end
@@ -315,7 +327,7 @@ local DropdownSingle = EggsTab:CreateDropdown({
 local HatchTypeDropdown = EggsTab:CreateDropdown({
     Name = "Hatch Type",
     Options = {"Single", "Triple"},
-    CurrentOption = {"Single"}, 
+    CurrentOption = {"Single"},
     MultipleOptions = false,
     Flag = "HatchTypeDropdown",
     Callback = function(Options)
