@@ -2,7 +2,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
     Name = "Toddy's hub v2",
     Icon = 0,
-    LoadingTitle = "Back for more lol",
+    LoadingTitle = "Back for more lol - Updated 02/19/2025 (19/02/2025)",
     LoadingSubtitle = "by mushroom0162",
     Theme = "Default",
     DisableRayfieldPrompts = false,
@@ -37,112 +37,187 @@ MainTab:CreateSection("Toddys rewrite")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 
-local teleporting = false
-local targetPart = nil
-local detectionRange = 50
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
-local function runAwayFromTarget(speaker, targetPart)
-    local character = speaker.Character
-    if character then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.WalkSpeed = humanoid.WalkSpeed * 2
+local Config = {
+    DETECTION_RANGE = 50,
+    MIN_RUN_DISTANCE = 20,
+    MAX_RUN_DISTANCE = 40,
+    SPEED_MULTIPLIER = 2,
+    MIN_UPDATE_DELAY = 0.01,
+    MAX_UPDATE_DELAY = 0.05,
+    DISTANCE_SCALING = 200,
+    CLOSE_RANGE = 10,
+    SMOOTHNESS_CLOSE = 0.05,
+    SMOOTHNESS_FAR = 0.1,
+    RAY_HEIGHT = 5,
+    RAY_DEPTH = -10,
+    ALTERNATIVE_OFFSETS = {
+        Vector3.new(5, 0, 5),
+        Vector3.new(-5, 0, 5),
+        Vector3.new(5, 0, -5),
+        Vector3.new(-5, 0, -5)
+    }
+}
+
+local State = {
+    isActive = false,
+    connections = {},
+    originalWalkSpeed = nil,
+    targetPart = nil
+}
+
+
+local function clearConnections()
+    for _, connection in ipairs(State.connections) do
+        connection:Disconnect()
+    end
+    table.clear(State.connections)
+end
+
+local function findSafePosition(desiredPosition, speaker)
+    local rayOrigin = desiredPosition + Vector3.new(0, Config.RAY_HEIGHT, 0)
+    local rayDirection = Vector3.new(0, Config.RAY_DEPTH, 0)
+    
+    local collision = workspace:FindPartOnRayWithIgnoreList(
+        Ray.new(rayOrigin, rayDirection),
+        {speaker.Character}
+    )
+    
+    if not collision then
+        return desiredPosition
+    end
+    
+    for _, offset in ipairs(Config.ALTERNATIVE_OFFSETS) do
+        local altPosition = desiredPosition + offset
+        local altRayOrigin = altPosition + Vector3.new(0, Config.RAY_HEIGHT, 0)
+        local altCollision = workspace:FindPartOnRayWithIgnoreList(
+            Ray.new(altRayOrigin, rayDirection),
+            {speaker.Character}
+        )
+        
+        if not altCollision then
+            return altPosition
         end
     end
+    
+    return desiredPosition + Vector3.new(0, 2, 0)
+end
 
-    while teleporting do
-        if speaker.Character and speaker.Character:FindFirstChild("HumanoidRootPart") then
-            local humanoidRootPart = speaker.Character.HumanoidRootPart
-            local humanoid = speaker.Character:FindFirstChildOfClass("Humanoid")
+local function updateTargetPart()
+    local rake = workspace:FindFirstChild("Rake")
+    State.targetPart = rake and rake:FindFirstChild("HumanoidRootPart")
+    return State.targetPart ~= nil
+end
 
-            if humanoid and humanoid.SeatPart then
-                humanoid.Sit = false
-                task.wait(0.0001)
-            end
-
-            if targetPart and targetPart:IsDescendantOf(workspace) then
-                local targetPosition = targetPart.Position
-                local distance = (targetPosition - humanoidRootPart.Position).Magnitude
-
-                if distance <= detectionRange then
-                    local runDistance = math.min(40, math.max(20, distance * 0.75))
-
-                    local directionAwayFromTarget = (humanoidRootPart.Position - targetPosition).Unit
-                    local desiredPosition = humanoidRootPart.Position + (directionAwayFromTarget * runDistance)
-
-                    local rayOrigin = desiredPosition + Vector3.new(0, 5, 0)
-                    local rayDirection = Vector3.new(0, -10, 0)
-                    local collision = workspace:FindPartOnRayWithIgnoreList(
-                        Ray.new(rayOrigin, rayDirection),
-                        {speaker.Character}
-                    )
-
-                    if collision then
-                        local alternativePositions = {
-                            desiredPosition + Vector3.new(5, 0, 5),
-                            desiredPosition + Vector3.new(-5, 0, 5),
-                            desiredPosition + Vector3.new(5, 0, -5),
-                            desiredPosition + Vector3.new(-5, 0, -5)
-                        }
-
-                        for _, pos in ipairs(alternativePositions) do
-                            local altRayOrigin = pos + Vector3.new(0, 5, 0)
-                            local altCollision = workspace:FindPartOnRayWithIgnoreList(
-                                Ray.new(altRayOrigin, rayDirection),
-                                {speaker.Character}
-                            )
-
-                            if not altCollision then
-                                desiredPosition = pos
-                                break
-                            end
-                        end
-                    end
-
-                    local targetLook = CFrame.new(desiredPosition, targetPosition)
-                    local smoothness = distance < 10 and 0.05 or 0.1
-                    humanoidRootPart.CFrame = humanoidRootPart.CFrame:Lerp(targetLook, smoothness)
-
-                    if humanoid then
-                        humanoid:MoveTo(desiredPosition)
-                    end
-                end
-
-            else
-                warn("Target part does not exist or is not in the workspace!")
-            end
-        else
-            warn("Speaker character or HumanoidRootPart not found!")
-        end
+local function runAwayFromTarget(speaker)
+    local character = speaker.Character
+    if not character then return end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    
+    if not (humanoidRootPart and humanoid) then return end
+    
+    if humanoid.SeatPart then
+        humanoid.Sit = false
+        task.wait(0.0001)
+    end
+    
+    if not (State.targetPart and State.targetPart:IsDescendantOf(workspace)) then
+        return
+    end
+    
+    local targetPosition = State.targetPart.Position
+    local currentPosition = humanoidRootPart.Position
+    local distance = (targetPosition - currentPosition).Magnitude
+    
+    if distance <= Config.DETECTION_RANGE then
+        local runDistance = math.min(
+            Config.MAX_RUN_DISTANCE,
+            math.max(Config.MIN_RUN_DISTANCE, distance * 0.75)
+        )
         
-        local distanceToTarget = (targetPart.Position - speaker.Character.HumanoidRootPart.Position).Magnitude
-        local delay = math.max(0.01, math.min(0.05, distanceToTarget / 200))
+        local directionAwayFromTarget = (currentPosition - targetPosition).Unit
+        local desiredPosition = currentPosition + (directionAwayFromTarget * runDistance)
+        
+        local safePosition = findSafePosition(desiredPosition, speaker)
+        
+        local targetLook = CFrame.new(safePosition, targetPosition)
+        local smoothness = distance < Config.CLOSE_RANGE and 
+            Config.SMOOTHNESS_CLOSE or Config.SMOOTHNESS_FAR
+        
+        humanoidRootPart.CFrame = humanoidRootPart.CFrame:Lerp(targetLook, smoothness)
+        humanoid:MoveTo(safePosition)
+        
+        local delay = math.max(
+            Config.MIN_UPDATE_DELAY,
+            math.min(Config.MAX_UPDATE_DELAY, distance / Config.DISTANCE_SCALING)
+        )
         task.wait(delay)
     end
 end
 
-local function toggleRunningAway(value)
-    teleporting = value
-    local player = game.Players.LocalPlayer
-    targetPart = workspace:FindFirstChild("Rake") and workspace.Rake:FindFirstChild("HumanoidRootPart")
+local function setupTargetTracking()
+    local workspaceConnection = workspace.ChildAdded:Connect(function(child)
+        if child.Name == "Rake" then
+            task.wait()
+            updateTargetPart()
+        end
+    end)
+    table.insert(State.connections, workspaceConnection)
+    
+    workspace.ChildRemoved:Connect(function(child)
+        if child.Name == "Rake" then
+            State.targetPart = nil
+        end
+    end)
+    table.insert(State.connections, workspaceConnection)
+end
 
-    if teleporting and targetPart then
-        runAwayFromTarget(player, targetPart)
-    elseif not teleporting then
+local function toggleRunningAway(value)
+    if State.isActive == value then return end
+    
+    State.isActive = value
+    local player = Players.LocalPlayer
+    
+    if value then
         local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            humanoid.WalkSpeed = humanoid.WalkSpeed / 2
+            State.originalWalkSpeed = humanoid.WalkSpeed
+            humanoid.WalkSpeed = State.originalWalkSpeed * Config.SPEED_MULTIPLIER
+        end
+        
+        updateTargetPart()
+        
+        setupTargetTracking()
+        
+        local updateConnection = RunService.Heartbeat:Connect(function()
+            if State.isActive then
+                runAwayFromTarget(player)
+            end
+        end)
+        table.insert(State.connections, updateConnection)
+        
+    else
+        clearConnections()
+        
+        local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid and State.originalWalkSpeed then
+            humanoid.WalkSpeed = State.originalWalkSpeed
         end
     end
 end
 
-local cameraToggle = MainTab:CreateToggle({
-    Name = "Anti-Rake chase",
+
+local antiRakeToggle = MainTab:CreateToggle({
+    Name = "Anti-Rake Chase",
     CurrentValue = false,
-    Flag = "ESP",
+    Flag = "AntiRake",
     Callback = function(Value)
         toggleRunningAway(Value)
-    end,
+    end
 })
 
 local Paragraph = MainTab:CreateParagraph({
@@ -156,7 +231,7 @@ local cameraToggle = MainTab:CreateToggle({
     CurrentValue = false,
     Flag = "ESP",
     Callback = function(Value)
-
+        
     end,
 })
 
@@ -232,172 +307,188 @@ local Paragraph = MainTab:CreateParagraph({
 MainTab:CreateSection("ESP Stuff")
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
-local ESPEnabled = false
 
-local function createHighlightForCharacter(character)
-    if character and character:FindFirstChild("Humanoid") then
-        local highlight = Instance.new("Highlight")
-        highlight.Name = "Highlight"
-        highlight.Adornee = character 
-        highlight.FillColor = Color3.new(0, 0, 255) 
-        highlight.FillTransparency = 0.8
-        highlight.OutlineColor = Color3.new(0, 0, 255)
-        highlight.OutlineTransparency = 0
-        highlight.Parent = character
-    end
+local Config = {
+    Players = {
+        Enabled = false,
+        FillColor = Color3.fromRGB(0, 140, 255),
+        FillTransparency = 0.7,
+        OutlineColor = Color3.fromRGB(0, 80, 255),
+        OutlineTransparency = 0
+    },
+    Rake = {
+        Enabled = false,
+        FillColor = Color3.fromRGB(255, 0, 0),
+        FillTransparency = 0.5,
+        OutlineColor = Color3.fromRGB(255, 100, 0),
+        OutlineTransparency = 0
+    },
+    FlareGun = {
+        Enabled = false,
+        FillColor = Color3.fromRGB(255, 200, 0),
+        FillTransparency = 0.3,
+        OutlineColor = Color3.fromRGB(255, 100, 0),
+        OutlineTransparency = 0
+    },
+    SupplyBox = {
+        Enabled = false,
+        FillColor = Color3.fromRGB(0, 255, 0),
+        FillTransparency = 0.5,
+        OutlineColor = Color3.fromRGB(0, 180, 0),
+        OutlineTransparency = 0
+    }
+}
+
+local ESP = {
+    Highlights = {},
+    Connections = {}
+}
+
+function ESP:CreateHighlight(object, settings)
+    if not object then return end
+    
+    self:RemoveHighlight(object)
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ESPHighlight"
+    highlight.Adornee = object
+    highlight.FillColor = settings.FillColor
+    highlight.FillTransparency = settings.FillTransparency
+    highlight.OutlineColor = settings.OutlineColor
+    highlight.OutlineTransparency = settings.OutlineTransparency
+    highlight.Parent = object
+    
+    self.Highlights[object] = highlight
+    
+    return highlight
 end
 
-local function removeHighlightFromCharacter(character)
-    local highlight = character:FindFirstChild("Highlight")
+function ESP:RemoveHighlight(object)
+    local highlight = self.Highlights[object]
     if highlight then
         highlight:Destroy()
+        self.Highlights[object] = nil
     end
 end
 
-local function managePlayerHighlights(player)
-    player.CharacterAdded:Connect(function(character)
-        if ESPEnabled and player ~= LocalPlayer then
-            createHighlightForCharacter(character)
+function ESP:CleanupConnections()
+    for _, connection in pairs(self.Connections) do
+        if connection then connection:Disconnect() end
+    end
+    self.Connections = {}
+end
+
+function ESP:SetupPlayerESP()
+    local function handleCharacter(player)
+        if not player or player == LocalPlayer then return end
+        
+        local function updatePlayerESP(character)
+            if not character then return end
+            
+            if Config.Players.Enabled then
+                self:CreateHighlight(character, Config.Players)
+                
+                local humanoid = character:FindFirstChild("Humanoid")
+                if humanoid then
+                    local deathConnection
+                    deathConnection = humanoid.Died:Connect(function()
+                        self:RemoveHighlight(character)
+                        if deathConnection then
+                            deathConnection:Disconnect()
+                        end
+                    end)
+                end
+            else
+                self:RemoveHighlight(character)
+            end
+        end
+        
+        if player.Character then
+            updatePlayerESP(player.Character)
+        end
+        
+        local characterConnection = player.CharacterAdded:Connect(updatePlayerESP)
+        table.insert(self.Connections, characterConnection)
+    end
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        handleCharacter(player)
+    end
+    
+    local playerAddedConnection = Players.PlayerAdded:Connect(handleCharacter)
+    table.insert(self.Connections, playerAddedConnection)
+    
+    local playerRemovingConnection = Players.PlayerRemoving:Connect(function(player)
+        if player.Character then
+            self:RemoveHighlight(player.Character)
         end
     end)
+    table.insert(self.Connections, playerRemovingConnection)
+end
 
-    if player.Character and ESPEnabled and player ~= LocalPlayer then
-        createHighlightForCharacter(player.Character)
+function ESP:SetupObjectESP(objectPath, configKey)
+    local function updateObjectESP()
+        local object = workspace:FindFirstChild(objectPath, true)
+        
+        if object then
+            if Config[configKey].Enabled then
+                self:CreateHighlight(object, Config[configKey])
+                
+                local destructionConnection
+                destructionConnection = object.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        self:RemoveHighlight(object)
+                        if destructionConnection then
+                            destructionConnection:Disconnect()
+                        end
+                    end
+                end)
+            else
+                self:RemoveHighlight(object)
+            end
+        end
     end
-
-    player.CharacterRemoving:Connect(function(character)
-        removeHighlightFromCharacter(character)
+    
+    local objectUpdateConnection = RunService.Heartbeat:Connect(function()
+        updateObjectESP()
     end)
+    table.insert(self.Connections, objectUpdateConnection)
 end
 
-for _, player in ipairs(Players:GetPlayers()) do
-    managePlayerHighlights(player)
+ESP:SetupPlayerESP()
+ESP:SetupObjectESP("Rake", "Rake")
+ESP:SetupObjectESP("FlareGunPickUp", "FlareGun")
+ESP:SetupObjectESP("Debris.SupplyCrates.Box", "SupplyBox")
+
+local function createToggle(tab, name, configKey)
+    return tab:CreateToggle({
+        Name = "ESP " .. name,
+        CurrentValue = Config[configKey].Enabled,
+        Flag = "ESP_" .. configKey,
+        Callback = function(Value)
+            Config[configKey].Enabled = Value
+            
+            if configKey == "Players" then
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player.Character then
+                        if Value then
+                            ESP:CreateHighlight(player.Character, Config.Players)
+                        else
+                            ESP:RemoveHighlight(player.Character)
+                        end
+                    end
+                end
+            end
+        end,
+    })
 end
 
-Players.PlayerAdded:Connect(managePlayerHighlights)
-
-Players.PlayerRemoving:Connect(function(player)
-    if player.Character then
-        removeHighlightFromCharacter(player.Character)
-    end
-end)
-
--- Create the toggle for ESP
-local cameraToggle = MainTab:CreateToggle({
-    Name = "ESP Players",
-    CurrentValue = false,
-    Flag = "ESP",
-    Callback = function(Value)
-        ESPEnabled = Value
-
-        -- Update highlights based on toggle state
-        if ESPEnabled then
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and player.Character then
-                    createHighlightForCharacter(player.Character)
-                end
-            end
-        else
-            -- Remove highlights for all players when toggled off
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player.Character then
-                    removeHighlightFromCharacter(player.Character)
-                end
-            end
-        end
-    end,
-})
-
-local cameraToggle = MainTab:CreateToggle({
-    Name = "ESP Rake",
-    CurrentValue = false,
-    Flag = "ESP",
-    Callback = function(Value)
-            local eggToHighlight = workspace.Rake
-            
-            if eggToHighlight then
-                local highlight = eggToHighlight:FindFirstChild("Highlight")
-
-                if Value then
-                    if not highlight then
-                        highlight = Instance.new("Highlight")
-                        highlight.Name = "Highlight"
-                        highlight.Adornee = eggToHighlight
-                        highlight.FillColor = Color3.new(1, 1, 0) 
-                        highlight.FillTransparency = 0.5 
-                        highlight.OutlineColor = Color3.new(1, 0, 0)
-                        highlight.OutlineTransparency = 0
-                        highlight.Parent = eggToHighlight
-                    end
-                else
-                    if highlight then
-                        highlight:Destroy()
-                end
-            end
-        end
-    end,
-})
-
-local cameraToggle = MainTab:CreateToggle({
-    Name = "ESP Flare gun",
-    CurrentValue = false,
-    Flag = "ESP",
-    Callback = function(Value)
-            local eggToHighlight = workspace.FlareGunPickUp
-            
-            if eggToHighlight then
-                local highlight = eggToHighlight:FindFirstChild("Highlight")
-
-                if Value then
-                    if not highlight then
-                        highlight = Instance.new("Highlight")
-                        highlight.Name = "Highlight"
-                        highlight.Adornee = eggToHighlight
-                        highlight.FillColor = Color3.new(1, 1, 0) 
-                        highlight.FillTransparency = 0.5 
-                        highlight.OutlineColor = Color3.new(1, 0, 0)
-                        highlight.OutlineTransparency = 0
-                        highlight.Parent = eggToHighlight
-                    end
-                else
-                    if highlight then
-                        highlight:Destroy()
-                end
-            end
-        end
-    end,
-})
-
-local cameraToggle = MainTab:CreateToggle({
-    Name = "ESP Create box",
-    CurrentValue = false,
-    Flag = "ESP",
-    Callback = function(Value)
-            local eggToHighlight = workspace.Debris.SupplyCrates.Box
-            
-            if eggToHighlight then
-                local highlight = eggToHighlight:FindFirstChild("Highlight")
-
-                if Value then
-                    if not highlight then
-                        highlight = Instance.new("Highlight")
-                        highlight.Name = "Highlight"
-                        highlight.Adornee = eggToHighlight
-                        highlight.FillColor = Color3.new(1, 1, 0) 
-                        highlight.FillTransparency = 0.5 
-                        highlight.OutlineColor = Color3.new(1, 0, 0)
-                        highlight.OutlineTransparency = 0
-                        highlight.Parent = eggToHighlight
-                    end
-                else
-                    if highlight then
-                        highlight:Destroy()
-                end
-            end
-        end
-    end,
-})
+createToggle(MainTab, "Players", "Players")
+createToggle(MainTab, "Rake", "Rake")
+createToggle(MainTab, "Flare Gun", "FlareGun")
+createToggle(MainTab, "Supply Box", "SupplyBox")
 
 local isFullBrightEnabled = false
 local brightLoop = nil
@@ -435,4 +526,31 @@ local fullBrightToggle = MiscTab:CreateToggle({
     Callback = function(Value)
         toggleFullBright(Value)
     end,
+})
+
+local thirdPerson = MiscTab:CreateToggle({
+    Name = 'Enable Third Person',
+    CurrentValue = false,
+    Flag = "ESP",
+    Callback = function(Value)
+        getgenv().stuff = Value
+local localPlayer = game:GetService("Players").LocalPlayer
+local function update()
+    if getgenv().stuff then
+        localPlayer.CameraMaxZoomDistance = 30
+        localPlayer.CameraMinZoomDistance = 0.5
+    else
+        localPlayer.CameraMaxZoomDistance = 0.5
+        localPlayer.CameraMinZoomDistance = 0.5
+    end
+end
+
+update()
+
+while true do 
+    update()
+    task.wait(0.1)
+end
+        
+    end
 })
