@@ -36,9 +36,8 @@ MainTab:CreateSection("Toddys rewrite")
 
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
-
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = {
     DETECTION_RANGE = 50,
@@ -304,10 +303,66 @@ local Paragraph = MainTab:CreateParagraph({
     Content = "Simple. The player will always be running in the opposite direction of the rake, no matter what."
 })
 
-MainTab:CreateSection("ESP Stuff")
+local cameraToggle = MainTab:CreateButton({
+    Name = "Delete fall damage",
+    Callback = function()
+local event = replicatedStorage:WaitForChild("FD_Event")
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+if event then
+    event:Destroy()
+    print("Successfully deleted FD_Event from ReplicatedStorage")
+else
+    print("FD_Event not found in ReplicatedStorage.  Could not delete.")
+end
+    end,
+})
+
+
+local cameraToggle = MainTab:CreateButton({
+    Name = "Delete Instamina (Infinite)",
+    Callback = function()
+local M_Hs = {}
+
+local function isModuleInTable(module)
+    for _, existingModule in ipairs(M_Hs) do
+        if existingModule == module then
+            return true
+        end
+    end
+    return false
+end
+
+if replicatedStorage:FindFirstChild("TKSMNA") and replicatedStorage.TKSMNA:FindFirstChild("Event") then
+    local event = replicatedStorage.TKSMNA.Event
+    for _, connection in ipairs(getconnections(event)) do
+        if connection.Connected then
+            connection:Disconnect()
+        end
+    end
+end
+
+for _, module in ipairs(getloadedmodules()) do
+    if module.Name == "M_H" and not isModuleInTable(module) then
+        table.insert(M_Hs, module)
+        local moduleScript = require(module)
+        if moduleScript and moduleScript.TakeStamina then
+            local oldTakeStamina = moduleScript.TakeStamina
+            moduleScript.TakeStamina = function(self, amount)
+                if amount > 0 then
+                    return oldTakeStamina(self, -0.5)
+                end
+                return oldTakeStamina(self, amount)
+            end
+        else
+            warn("M_H module does not have a TakeStamina function or is incorrectly structured.")
+        end
+    end
+end
+    end,
+})
+
+
+MainTab:CreateSection("ESP Stuff")
 local LocalPlayer = Players.LocalPlayer
 
 local Config = {
