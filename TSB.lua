@@ -1,3 +1,8 @@
+game:GetService("StarterGui"):SetCore("SendNotification",{
+	Title = "by mushroom0162",
+	Text = "testing, open source ",
+})
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -15,25 +20,21 @@ local CONFIG = {
     DASH_VELOCITY_THRESHOLD = 25,
     MINIMUM_VELOCITY_FOR_THREAT = 5,
     TRAJECTORY_PRECISION = 15,
-    -- Threat Weights
     M1_ATTACK_WEIGHT = 0.8,
     ANIMATION_WEIGHT = 0.4,
     DASH_WEIGHT = 0.3,
     PROXIMITY_WEIGHT = 0.2,
     VELOCITY_WEIGHT = 0.2,
     TRAJECTORY_WEIGHT = 0.3,
-    -- Animation Configuration
     ANIMATIONS_THREAT_KEYWORDS = {
         "slash", "stab", "swing", "punch", "kick", "attack", "m1", "strike", "lunge", "dash",
     },
     MINIMUM_ANIMATION_DURATION = 0.1,
-    -- Debug and History
-    DEBUG_MODE = true,
+    DEBUG_MODE = false,
     ADDITIONAL_BLOCK_DISTANCE = 8,
     VELOCITY_HISTORY_LIMIT = 15,
-    -- Combo Prevention
-    COMBO_DETECTION_TIME = 0.5, -- Time window to detect combos
-    MAX_ATTACKS_IN_COMBO = 3    -- Maximum attacks before considering it a combo
+    COMBO_DETECTION_TIME = 0.5,
+    MAX_ATTACKS_IN_COMBO = 3
 }
 
 local State = {
@@ -42,8 +43,8 @@ local State = {
     playerVelocities = {},
     trackedAnimations = {},
     activeAttackers = {},
-    attackHistory = {}, -- Track recent attacks for combo detection
-    lastAttackTimes = {} -- Track timing of attacks
+    attackHistory = {}, 
+    lastAttackTimes = {}
 }
 
 local function debugLog(message)
@@ -52,7 +53,7 @@ local function debugLog(message)
     end
 end
 
--- Enhanced isAlive check
+
 local function isAlive(player)
     local character = player.Character
     if not character then return false end
@@ -71,7 +72,7 @@ end
 
 local ThreatSystem = {}
 
--- Track attack patterns
+
 function ThreatSystem:updateAttackHistory(player)
     if not State.attackHistory[player] then
         State.attackHistory[player] = {}
@@ -80,19 +81,17 @@ function ThreatSystem:updateAttackHistory(player)
 
     local currentTime = tick()
     
-    -- Clean up old attack history
     while #State.lastAttackTimes[player] > 0 and 
           currentTime - State.lastAttackTimes[player][1] > CONFIG.COMBO_DETECTION_TIME do
         table.remove(State.lastAttackTimes[player], 1)
         table.remove(State.attackHistory[player], 1)
     end
 
-    -- Add new attack
     table.insert(State.lastAttackTimes[player], currentTime)
     table.insert(State.attackHistory[player], true)
 end
 
--- Enhanced M1ing detection with combo awareness
+
 function ThreatSystem:checkM1ing(player)
     local character = player.Character
     if not character then return false end
@@ -134,7 +133,7 @@ function ThreatSystem:updatePlayerVelocity(player)
     end
 end
 
--- Enhanced dash detection
+
 function ThreatSystem:isPlayerDashing(player)
     local history = State.playerVelocities[player]
     if not history or #history < 3 then return false end
@@ -159,7 +158,7 @@ function ThreatSystem:predictPlayerPosition(player)
     return futurePosition
 end
 
--- Check for threatening animations
+
 function ThreatSystem:checkThreateningAnimations(player)
     local character = player.Character
     if not character then return false end
@@ -181,7 +180,6 @@ function ThreatSystem:checkThreateningAnimations(player)
     return false
 end
 
--- Comprehensive threat evaluation
 function ThreatSystem:evaluateThreat(player)
     if not player.Character or not isAlive(player) or not LocalPlayer.Character then return 0 end
 
@@ -195,21 +193,18 @@ function ThreatSystem:evaluateThreat(player)
     local threatLevel = 0
     local hasM1ing = self:checkM1ing(player)
     
-    -- Base threat from M1ing
     if hasM1ing then
         threatLevel = threatLevel + CONFIG.M1_ATTACK_WEIGHT
     end
 
-    -- Proximity threat (weighted more heavily if attacking)
+
     local proximityFactor = (1 - (currentDistance / CONFIG.ATTACK_RANGE))
     threatLevel = threatLevel + (proximityFactor * CONFIG.PROXIMITY_WEIGHT * (hasM1ing and 2 or 1))
 
-    -- Animation threat
     if self:checkThreateningAnimations(player) then
         threatLevel = threatLevel + CONFIG.ANIMATION_WEIGHT
     end
 
-    -- Velocity and dash threat
     if playerRoot.Velocity.Magnitude > CONFIG.MINIMUM_VELOCITY_FOR_THREAT then
         local velocityImpact = math.clamp(playerRoot.Velocity.Magnitude / 25, 0, 1)
         threatLevel = threatLevel + (velocityImpact * CONFIG.VELOCITY_WEIGHT)
@@ -219,15 +214,13 @@ function ThreatSystem:evaluateThreat(player)
         end
     end
 
-    -- Trajectory threat
     local futurePosition = self:predictPlayerPosition(player)
     if futurePosition and (futurePosition - localRoot.Position).Magnitude < CONFIG.ADDITIONAL_BLOCK_DISTANCE then
         threatLevel = threatLevel + CONFIG.TRAJECTORY_WEIGHT
     end
 
-    -- Combo detection adjustment
     if State.attackHistory[player] and #State.attackHistory[player] >= CONFIG.MAX_ATTACKS_IN_COMBO then
-        threatLevel = threatLevel * 1.5 -- Increase threat level for combo attacks
+        threatLevel = threatLevel * 1.5
         debugLog(player.Name .. " is performing a combo attack!")
     end
 
